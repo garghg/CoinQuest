@@ -448,14 +448,26 @@ export function addTask(input = '', taskType = '', addToTable=true, rowId = ''){
             var taskName = document.createTextNode(taskType +" for $" +input+` (+${addCoin} coins)`);
         }
         newTask.appendChild(taskName);
-        if (addToTable){
-            var rowTaskName = taskName.textContent.replace(` (+${addCoin} coins)`, "") 
-            addRow(budget, rowTaskName, input, taskType, false, null, newTask);
-            tblArray.push(-Number(input));
-            amounts[6] += Number(input);
-            myChart ? myChart.destroy() : {};
-            graph();
-            getTableVal();
+            if (addToTable){
+                // Check if this would cause negative budget
+                var currentNet = Number(netCell.textContent);
+                if (currentNet - Number(input) < 0) {
+                    createModal(
+                        'Budget Alert ⚠️', 
+                        `This goal of $${input} would exceed your budget by $${Number(input) - currentNet}. Please enter a smaller amount or increase your income.`,
+                        'OK',
+                        ''
+                    );
+                    // Don't add the task if it would cause negative budget
+                    return;
+                }
+                var rowTaskName = taskName.textContent.replace(` (+${addCoin} coins)`, "") 
+                addRow(budget, rowTaskName, input, taskType, false, null, newTask);
+                tblArray.push(-Number(input));
+                amounts[6] += Number(input);
+                myChart ? myChart.destroy() : {};
+                graph();
+                getTableVal();
         }  
     }
 
@@ -539,11 +551,31 @@ function bgtItemAmt(amtVal = ''){
 }
 
 function getTableVal() {
-    netCell.textContent = tblArray.reduce((accumulator, currentValue) => {
-        return accumulator + currentValue
-    },0);
+    var netTotal = tblArray.reduce((accumulator, currentValue) => {
+        return accumulator + currentValue;
+    }, 0);
+    
+    if (netTotal < 0) {
+        createModal(
+            'Budget Alert ⚠️', 
+            `This would result in a negative budget of -$${Math.abs(netTotal)}. Please reduce expenses or increase income before adding this item.`,
+            'OK',
+            ''
+        );
 
-} 
+        tblArray.pop();
+
+        if (budget.rows.length > 2) {
+            budget.deleteRow(budget.rows.length - 2);
+        }
+
+        netTotal = tblArray.reduce((accumulator, currentValue) => {
+            return accumulator + currentValue;
+        }, 0);
+    }
+    
+    netCell.textContent = netTotal;
+}
 
 
 async function addRow(table, nameVal = '', amtVal = '', dropdownVal = '', loading = false, existingId = null, newTask = null) {
@@ -1283,6 +1315,13 @@ export function startProj(){
                 'Set A Later Due Date',
                 'Close'
             );
+        } else if (Number(netCell.textContent) - saveMonth < 0){
+            createModal(
+                'Budget Would Go Negative ⚠️',
+                `This project would put you $${saveMonth - Number(netCell.textContent)} over budget. Please reduce the amount or extend the timeline.`,
+                'Adjust Project',
+                'Close'
+            ); 
         } else if(daysLeft < 0){
             createModal('Oops ⏳', 'Can\'t end a project before it even starts. Start Date must be later than Due Date.', 'Let\'s get time flowing forwards again', 'Close');
         } else if(daysLeft < 30){
