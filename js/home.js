@@ -442,83 +442,94 @@ export function addTask(input = '', taskType = '', addToTable=true, rowId = ''){
         createModal("Oops 💲", "Looks like you forgot to enter an amount. Let\'s enter that in, shall we?", "Enter Amount", 'I\'ll do it later');
         return;
     } else {
+        // CHECK BUDGET FIRST - BEFORE CREATING ANYTHING
+        if (addToTable){
+            var currentNet = Number(netCell.textContent);
+            if (currentNet - Number(input) < 0) {
+                createModal(
+                    'Budget Alert ⚠️', 
+                    `This goal of $${input} would exceed your budget by $${Number(input) - currentNet}. Please enter a smaller amount or increase your income.`,
+                    'OK',
+                    ''
+                );
+                // Clear inputs and exit completely - don't create the task
+                document.getElementById("input").value = "";
+                document.getElementById("taskType").value = "Default";
+                return; // This stops the entire function
+            }
+        }
+        
+        // ONLY CREATE THE TASK IF THE BUDGET CHECK PASSED
         if (taskType != 'Other goal'){
             var taskName = document.createTextNode(taskType +" $" +input+` (+${addCoin} coins)`);
         } else{
             var taskName = document.createTextNode(taskType +" for $" +input+` (+${addCoin} coins)`);
         }
         newTask.appendChild(taskName);
-            if (addToTable){
-                // Check if this would cause negative budget
-                var currentNet = Number(netCell.textContent);
-                if (currentNet - Number(input) < 0) {
-                    createModal(
-                        'Budget Alert ⚠️', 
-                        `This goal of $${input} would exceed your budget by $${Number(input) - currentNet}. Please enter a smaller amount or increase your income.`,
-                        'OK',
-                        ''
-                    );
-                    // Don't add the task if it would cause negative budget
-                    return;
-                }
-                var rowTaskName = taskName.textContent.replace(` (+${addCoin} coins)`, "") 
-                addRow(budget, rowTaskName, input, taskType, false, null, newTask);
-                tblArray.push(-Number(input));
-                amounts[6] += Number(input);
-                myChart ? myChart.destroy() : {};
-                graph();
-                getTableVal();
-        }  
-    }
-
-    document.querySelector("ul").appendChild(newTask);
-
-    document.getElementById("input").value = "";
-    document.getElementById("taskType").value = "Default";
-
-    var span = document.createElement("SPAN");
-    var cross = document.createTextNode("x");
-    span.className  = "close";
-    span.appendChild(cross);
-    newTask.appendChild(span);
-
-    for (i = 0; i < close.length; i++){
-        close[i].onclick = async function() {
-            var count = 1;
-            var div = this.parentElement;
-            div.style.display = "none";
-            for (let currentRow of budget.rows){
-                var checkText;
-                if (taskType == 'Other goal'){
-                    checkText = (taskType +" for $" +input);
-                } else{
-                    checkText = (taskType +" $" +input);
-                }
-                if (currentRow.cells[0].textContent == checkText && count > 0){
-                    var cellVal = Number(currentRow.cells[1].textContent);
-                    var category = currentRow.cells[2].textContent;
-                    const docId = currentRow.getAttribute("id");
-                    amounts[categories.indexOf(category)] -= cellVal;
-                    
-                    if (category != "Job" && category != "Assets" && category != "Savings"){
-                        cellVal = -cellVal;
+        
+        // Add to budget table if needed
+        if (addToTable){
+            var rowTaskName = taskName.textContent.replace(` (+${addCoin} coins)`, "") 
+            addRow(budget, rowTaskName, input, taskType, false, null, newTask);
+            tblArray.push(-Number(input));
+            amounts[6] += Number(input);
+            myChart ? myChart.destroy() : {};
+            graph();
+            getTableVal();
+        }
+        
+        // Add to UI list
+        document.querySelector("ul").appendChild(newTask);
+        
+        // Clear inputs
+        document.getElementById("input").value = "";
+        document.getElementById("taskType").value = "Default";
+        
+        // Add close button
+        var span = document.createElement("SPAN");
+        var cross = document.createTextNode("x");
+        span.className  = "close";
+        span.appendChild(cross);
+        newTask.appendChild(span);
+        
+        // Add close button functionality
+        for (i = 0; i < close.length; i++){
+            close[i].onclick = async function() {
+                var count = 1;
+                var div = this.parentElement;
+                div.style.display = "none";
+                for (let currentRow of budget.rows){
+                    var checkText;
+                    if (taskType == 'Other goal'){
+                        checkText = (taskType +" for $" +input);
+                    } else{
+                        checkText = (taskType +" $" +input);
                     }
-                    var numIdx = tblArray.indexOf(cellVal);
-                    tblArray.splice(numIdx, 1);
-                    amounts[6] += cellVal;
-                    myChart ? myChart.destroy() : {};
-                    graph();
-                    budget.deleteRow(currentRow.rowIndex);
-                    count --;
-                    getTableVal();
+                    if (currentRow.cells[0].textContent == checkText && count > 0){
+                        var cellVal = Number(currentRow.cells[1].textContent);
+                        var category = currentRow.cells[2].textContent;
+                        const docId = currentRow.getAttribute("id");
+                        amounts[categories.indexOf(category)] -= cellVal;
+                        
+                        if (category != "Job" && category != "Assets" && category != "Savings"){
+                            cellVal = -cellVal;
+                        }
+                        var numIdx = tblArray.indexOf(cellVal);
+                        tblArray.splice(numIdx, 1);
+                        amounts[6] += cellVal;
+                        myChart ? myChart.destroy() : {};
+                        graph();
+                        budget.deleteRow(currentRow.rowIndex);
+                        count --;
+                        getTableVal();
 
-                    const userId = auth.currentUser.uid;
-                    const docRef = doc(db, "budgets", userId, "entries", docId);
-                    console.log("Trying to delete doc with ID:", docId);
-                    await deleteDoc(docRef);
+                        const userId = auth.currentUser.uid;
+                        const docRef = doc(db, "budgets", userId, "entries", docId);
+                        console.log("Trying to delete doc with ID:", docId);
+                        await deleteDoc(docRef);
+                    }
                 }
             }
-
         }
     }
 }
@@ -563,15 +574,33 @@ function getTableVal() {
             ''
         );
 
-        tblArray.pop();
+        // Remove from tblArray
+        var removedValue = tblArray.pop();
 
+        // Remove from budget table
         if (budget.rows.length > 2) {
+            // Get the category from the row we're about to delete
+            var rowToDelete = budget.rows[budget.rows.length - 2];
+            var category = rowToDelete.cells[2].textContent;
+            var amount = Math.abs(removedValue); // Convert back to positive for the amounts array
+            
+            // Update the amounts array for the graph
+            var categoryIndex = categories.indexOf(category);
+            if (categoryIndex !== -1) {
+                amounts[categoryIndex] -= amount;
+            }
+            
+            // Delete the row
             budget.deleteRow(budget.rows.length - 2);
         }
 
+        // Recalculate total
         netTotal = tblArray.reduce((accumulator, currentValue) => {
             return accumulator + currentValue;
         }, 0);
+        
+        myChart ? myChart.destroy() : {};
+        graph();
     }
     
     netCell.textContent = netTotal;
